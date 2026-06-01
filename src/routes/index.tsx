@@ -6,9 +6,9 @@ import Game from "@/components/Game";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Chroma — Visual Memory Training" },
+      { title: "Colouris — Visual Memory Training" },
       { name: "description", content: "A premium visual memory and color perception game. Train your eye." },
-      { property: "og:title", content: "Chroma — Visual Memory Training" },
+      { property: "og:title", content: "Colouris — Visual Memory Training" },
       { property: "og:description", content: "Train your color memory with cinematic, minimal challenges." },
     ],
   }),
