@@ -280,7 +280,7 @@ function RecallCard({
       <Brand />
 
       {/* Sliders panel */}
-      <div className="absolute inset-y-6 sm:inset-y-10 left-4 sm:left-8 flex gap-2 sm:gap-4" style={{ width: "min(38%, 220px)" }}>
+      <div className="absolute inset-y-6 sm:inset-y-10 left-4 sm:left-8 flex gap-3 sm:gap-5" style={{ width: "min(46%, 320px)" }}>
         <div className="flex-1 flex flex-col">
           <VSlider value={guess.h} min={0} max={360} onChange={(h) => setGuess({ ...guess, h })} gradient={hueGrad} label="Hue" />
         </div>
