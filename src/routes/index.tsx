@@ -6,9 +6,9 @@ import Game from "@/components/Game";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Chroma — Visual Memory Training" },
+      { title: "Colouris — Visual Memory Training" },
       { name: "description", content: "A premium visual memory and color perception game. Train your eye." },
-      { property: "og:title", content: "Chroma — Visual Memory Training" },
+      { property: "og:title", content: "Colouris — Visual Memory Training" },
       { property: "og:description", content: "Train your color memory with cinematic, minimal challenges." },
     ],
   }),
@@ -61,7 +61,7 @@ function Index() {
               <motion.p
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.6, ease }}
                 className="text-xs uppercase tracking-[0.35em] text-muted-foreground"
-              >Chroma · Visual Memory</motion.p>
+              >Colouris · Visual Memory</motion.p>
 
               <motion.h1
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.8, ease }}

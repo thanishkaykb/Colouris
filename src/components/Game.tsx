@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { hexToRgb, randomColor, rgbToHex, similarity, type RGB } from "@/lib/color";
+import { hslCss, hslToRgb, randomHsl, similarityHsl, type HSL } from "@/lib/color";
 import { sfx } from "@/lib/sound";
 
-type Phase = "intro" | "memorize" | "recall" | "reveal" | "summary";
+type Phase = "memorize" | "recall" | "reveal" | "summary";
 type Difficulty = "easy" | "medium" | "hard";
 
 const DIFF: Record<Difficulty, { seconds: number; rounds: number; label: string }> = {
@@ -12,27 +12,35 @@ const DIFF: Record<Difficulty, { seconds: number; rounds: number; label: string 
   hard: { seconds: 2.5, rounds: 7, label: "Hard" },
 };
 
-interface RoundResult { target: RGB; guess: RGB; score: number }
+interface RoundResult { target: HSL; guess: HSL; score: number }
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
+const feedback = (score: number) => {
+  if (score >= 9.5) return { title: "Disgustingly accurate.", sub: "It's off-putting." };
+  if (score >= 9) return { title: "Frighteningly close.", sub: "Are you a machine?" };
+  if (score >= 8) return { title: "Razor sharp.", sub: "Eyes wide open." };
+  if (score >= 6.5) return { title: "Pretty good.", sub: "Keep training." };
+  if (score >= 5) return { title: "Close-ish.", sub: "The vibe was right." };
+  if (score >= 3) return { title: "Not bad.", sub: "Different planet though." };
+  return { title: "Bold guess.", sub: "Try squinting next time." };
+};
+
 export default function Game({
-  onExit,
-  soundOn,
-  difficulty,
+  onExit, soundOn, difficulty,
 }: { onExit: () => void; soundOn: boolean; difficulty: Difficulty }) {
   const cfg = DIFF[difficulty];
-  const [phase, setPhase] = useState<Phase>("intro");
+  const [phase, setPhase] = useState<Phase>("memorize");
   const [round, setRound] = useState(0);
-  const [target, setTarget] = useState<RGB>(randomColor());
-  const [guess, setGuess] = useState<RGB>({ r: 128, g: 128, b: 128 });
+  // target is set ONCE per round and never mutated after
+  const [target, setTarget] = useState<HSL>(() => randomHsl());
+  const [guess, setGuess] = useState<HSL>({ h: 180, s: 50, l: 50 });
   const [timeLeft, setTimeLeft] = useState(cfg.seconds);
   const [results, setResults] = useState<RoundResult[]>([]);
   const rafRef = useRef<number | null>(null);
 
   const play = useCallback((fn: () => void) => { if (soundOn) fn(); }, [soundOn]);
 
-  // Countdown loop using rAF for smoothness
   useEffect(() => {
     if (phase !== "memorize") return;
     const start = performance.now();
@@ -51,34 +59,24 @@ export default function Game({
   }, [phase, cfg.seconds, play]);
 
   const startRound = useCallback(() => {
-    const c = randomColor();
-    setTarget(c);
-    setGuess({ r: 128, g: 128, b: 128 });
+    setTarget(randomHsl());
+    setGuess({ h: 180, s: 50, l: 50 });
     setTimeLeft(cfg.seconds);
     setPhase("memorize");
   }, [cfg.seconds]);
 
-  // start first round on mount
-  useEffect(() => { startRound(); /* eslint-disable-next-line */ }, []);
-
   const submitGuess = useCallback(() => {
-    const score = similarity(target, guess);
+    const score = similarityHsl(target, guess);
     setResults((r) => [...r, { target, guess, score }]);
     setPhase("reveal");
     play(sfx.success);
   }, [target, guess, play]);
 
   const next = useCallback(() => {
-    if (round + 1 >= cfg.rounds) {
-      setPhase("summary");
-      play(sfx.end);
-    } else {
-      setRound((r) => r + 1);
-      startRound();
-    }
+    if (round + 1 >= cfg.rounds) { setPhase("summary"); play(sfx.end); }
+    else { setRound((r) => r + 1); startRound(); }
   }, [round, cfg.rounds, startRound, play]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
@@ -92,273 +90,296 @@ export default function Game({
   }, [phase, submitGuess, next, onExit]);
 
   const avg = useMemo(
-    () => results.length ? Math.round(results.reduce((s, r) => s + r.score, 0) / results.length) : 0,
+    () => results.length ? Math.round(results.reduce((s, r) => s + r.score, 0) / results.length * 100) / 100 : 0,
     [results]
   );
-  const progress = ((round + (phase === "reveal" || phase === "summary" ? 1 : 0)) / cfg.rounds) * 100;
-  const timerColor = timeLeft < 1.2 ? "var(--coral)" : "currentColor";
 
   return (
-    <div className="min-h-screen w-full flex flex-col">
-      {/* Top bar */}
-      <header className="px-6 sm:px-10 pt-6 flex items-center justify-between gap-4">
-        <button onClick={onExit} className="text-sm text-muted-foreground hover:text-foreground transition-colors">← Exit</button>
-        <div className="flex-1 mx-6 max-w-xl">
-          <div className="h-1.5 w-full rounded-full bg-foreground/10 overflow-hidden">
-            <motion.div
-              className="h-full rounded-full bg-foreground"
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.6, ease }}
-            />
-          </div>
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-8">
+      <div className="w-full max-w-[1200px]" style={{ width: "min(92vw, 1200px)" }}>
+        {/* exit + sessions */}
+        <div className="flex items-center justify-between mb-4 px-2">
+          <button onClick={onExit} className="text-xs uppercase tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors">← Exit</button>
+          <span className="text-xs uppercase tracking-[0.25em] text-muted-foreground">{cfg.label}</span>
         </div>
-        <div className="text-sm tabular text-muted-foreground">
-          Round <span className="text-foreground font-medium">{Math.min(round + 1, cfg.rounds)}</span> / {cfg.rounds}
-        </div>
-      </header>
 
-      <main className="flex-1 flex items-center justify-center p-6 sm:p-10">
         <AnimatePresence mode="wait">
           {phase === "memorize" && (
-            <motion.div
-              key={`mem-${round}`}
-              initial={{ opacity: 0, scale: 0.96, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98, filter: "blur(8px)" }}
-              transition={{ duration: 0.55, ease }}
-              className="relative w-full max-w-5xl aspect-[16/10] rounded-[40px] overflow-hidden"
-              style={{
-                background: `linear-gradient(135deg, ${rgbToHex(target)}, color-mix(in oklab, ${rgbToHex(target)} 70%, white))`,
-                boxShadow: "var(--shadow-float)",
-              }}
-            >
-              <div className="absolute inset-0 p-8 sm:p-12 flex flex-col justify-between text-white mix-blend-difference">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.2em] opacity-80">Seconds to remember</p>
-                    <p className="font-display text-3xl sm:text-4xl mt-1">Memorize this color</p>
-                  </div>
-                  <motion.div
-                    key={Math.ceil(timeLeft)}
-                    initial={{ scale: 1.2, opacity: 0.6 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ duration: 0.3, ease }}
-                    className="font-display tabular text-7xl sm:text-9xl leading-none"
-                    style={{ color: timerColor }}
-                  >
-                    {Math.ceil(timeLeft)}
-                  </motion.div>
-                </div>
-                <div className="flex items-end justify-between">
-                  <p className="font-display text-5xl sm:text-7xl tabular">{rgbToHex(target)}</p>
-                  <p className="text-sm opacity-80 tabular">rgb({target.r}, {target.g}, {target.b})</p>
-                </div>
-              </div>
-              {/* floating orbs */}
-              <motion.div
-                aria-hidden
-                className="absolute -top-20 -right-20 w-80 h-80 rounded-full opacity-30 blur-3xl"
-                style={{ background: "white" }}
-                animate={{ y: [0, 20, 0], x: [0, -10, 0] }}
-                transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-              />
-            </motion.div>
+            <MemorizeCard key={`mem-${round}`} target={target} round={round} total={cfg.rounds} timeLeft={timeLeft} />
           )}
-
           {phase === "recall" && (
-            <RecallCard key={`rec-${round}`} guess={guess} setGuess={setGuess} onSubmit={submitGuess} />
+            <RecallCard key={`rec-${round}`} guess={guess} setGuess={setGuess} onSubmit={submitGuess} round={round} total={cfg.rounds} />
           )}
-
           {phase === "reveal" && (
             <RevealCard
               key={`rev-${round}`}
-              target={target}
-              guess={guess}
+              target={target} guess={guess}
               score={results[results.length - 1]?.score ?? 0}
-              onNext={next}
-              isLast={round + 1 >= cfg.rounds}
+              onNext={next} isLast={round + 1 >= cfg.rounds}
+              round={round} total={cfg.rounds}
             />
           )}
-
           {phase === "summary" && (
             <Summary key="sum" results={results} avg={avg} onPlayAgain={() => { setRound(0); setResults([]); startRound(); }} onExit={onExit} />
           )}
         </AnimatePresence>
-      </main>
-
-      <footer className="px-6 sm:px-10 pb-6 text-xs text-muted-foreground tabular text-center">
-        {cfg.label} · press <kbd className="px-1.5 py-0.5 rounded bg-foreground/10">Enter</kbd> to continue · <kbd className="px-1.5 py-0.5 rounded bg-foreground/10">Esc</kbd> to exit
-      </footer>
-    </div>
-  );
-}
-
-function Slider({ label, value, onChange, accent }: { label: string; value: number; onChange: (v: number) => void; accent: string }) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{label}</span>
-        <span className="tabular text-sm font-medium">{value}</span>
       </div>
-      <input
-        type="range" min={0} max={255} value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-2 appearance-none rounded-full cursor-pointer accent-foreground"
-        style={{ background: `linear-gradient(to right, ${accent} ${(value/255)*100}%, color-mix(in oklab, currentColor 10%, transparent) ${(value/255)*100}%)` }}
-      />
     </div>
   );
 }
 
-function RecallCard({ guess, setGuess, onSubmit }: { guess: RGB; setGuess: (v: RGB) => void; onSubmit: () => void }) {
+// ---------- Shared card shell ----------
+function Card({ bg, children }: { bg: string; children: React.ReactNode }) {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96, y: 12 }}
+      initial={{ opacity: 0, scale: 0.97, y: 12 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98, filter: "blur(8px)" }}
       transition={{ duration: 0.55, ease }}
-      className="w-full max-w-5xl rounded-[40px] glass p-8 sm:p-12"
-      style={{ boxShadow: "var(--shadow-float)" }}
+      className="relative w-full rounded-[32px] overflow-hidden"
+      style={{
+        aspectRatio: "16 / 11",
+        minHeight: 420,
+        background: bg,
+        boxShadow: "0 40px 100px -30px rgba(15,18,30,0.25), 0 12px 40px -12px rgba(15,18,30,0.12)",
+      }}
     >
-      <div className="grid md:grid-cols-2 gap-10 items-center">
-        <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">Recall</p>
-          <h2 className="font-display text-4xl sm:text-6xl mt-2 leading-tight">Recreate the color you saw</h2>
-          <p className="mt-4 text-muted-foreground">Move each channel until it matches what you remember. Trust your eye.</p>
-          <motion.div
-            className="mt-8 h-40 rounded-3xl"
-            animate={{ background: rgbToHex(guess) }}
-            transition={{ duration: 0.2 }}
-            style={{ boxShadow: "var(--shadow-soft)" }}
-          />
-          <p className="mt-3 tabular text-sm text-muted-foreground">{rgbToHex(guess)} · rgb({guess.r}, {guess.g}, {guess.b})</p>
-        </div>
-        <div className="space-y-6">
-          <Slider label="Red" value={guess.r} onChange={(v) => setGuess({ ...guess, r: v })} accent="#ef4444" />
-          <Slider label="Green" value={guess.g} onChange={(v) => setGuess({ ...guess, g: v })} accent="#22c55e" />
-          <Slider label="Blue" value={guess.b} onChange={(v) => setGuess({ ...guess, b: v })} accent="#3b82f6" />
-          <motion.button
-            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-            onClick={onSubmit}
-            className="mt-4 w-full inline-flex items-center justify-center gap-3 rounded-full bg-primary text-primary-foreground px-6 py-4 text-base font-medium"
-          >
-            Lock in answer
-            <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-foreground/15">→</span>
-          </motion.button>
-        </div>
-      </div>
+      {children}
     </motion.div>
   );
 }
 
-function RevealCard({ target, guess, score, onNext, isLast }: { target: RGB; guess: RGB; score: number; onNext: () => void; isLast: boolean }) {
+function Brand() {
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.96, y: 12 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.98, filter: "blur(8px)" }}
-      transition={{ duration: 0.55, ease }}
-      className="w-full max-w-5xl rounded-[40px] glass p-8 sm:p-12"
-      style={{ boxShadow: "var(--shadow-float)" }}
-    >
-      <div className="flex items-end justify-between flex-wrap gap-4">
-        <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">Result</p>
-          <h2 className="font-display text-4xl sm:text-5xl mt-2">Your color, side by side</h2>
-        </div>
-        <ScoreMeter score={score} />
-      </div>
-      <div className="mt-10 grid grid-cols-2 gap-4 sm:gap-6">
-        <Swatch label="Your Selection" color={guess} delay={0} />
-        <Swatch label="Original" color={target} delay={0.15} />
-      </div>
-      <div className="mt-10 flex justify-end">
-        <motion.button
-          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-          onClick={onNext}
-          className="group inline-flex items-center gap-4 rounded-full pl-6 pr-2 py-2 bg-foreground text-background"
+    <span className="absolute bottom-4 right-5 sm:bottom-6 sm:right-8 text-[10px] sm:text-xs tracking-[0.2em] text-black/35 select-none">
+      Colouris
+    </span>
+  );
+}
+
+function Counter({ round, total }: { round: number; total: number }) {
+  return (
+    <span className="absolute top-4 left-5 sm:top-6 sm:left-8 text-xs sm:text-sm tabular text-black/45">
+      {round + 1}/{total}
+    </span>
+  );
+}
+
+// ---------- Memorize ----------
+function MemorizeCard({ target, round, total, timeLeft }: { target: HSL; round: number; total: number; timeLeft: number }) {
+  const seconds = Math.ceil(timeLeft);
+  return (
+    <Card bg={hslCss(target)}>
+      <Counter round={round} total={total} />
+      <div className="absolute top-4 right-5 sm:top-6 sm:right-8 text-right">
+        <motion.div
+          key={seconds}
+          initial={{ scale: 1.15, opacity: 0.6 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.25, ease }}
+          className="font-display tabular text-black/85 leading-none"
+          style={{ fontSize: "clamp(64px, 14vw, 180px)", letterSpacing: "-0.04em", fontWeight: 700 }}
         >
-          <span className="text-sm font-medium">{isLast ? "See summary" : "Next round"}</span>
-          <span className="w-12 h-12 rounded-full bg-background text-foreground inline-flex items-center justify-center text-lg group-hover:rotate-45 transition-transform duration-300">→</span>
+          {seconds}
+        </motion.div>
+        <p className="mt-1 text-[11px] sm:text-sm text-black/60 tracking-tight">Seconds to remember</p>
+      </div>
+      <Brand />
+    </Card>
+  );
+}
+
+// ---------- Recall ----------
+function VSlider({
+  value, min, max, onChange, gradient, label, thumbBorder = "#fff",
+}: {
+  value: number; min: number; max: number; onChange: (v: number) => void;
+  gradient: string; label: string; thumbBorder?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+
+  const setFromY = (clientY: number) => {
+    const el = ref.current; if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+    onChange(Math.round(min + (max - min) * ratio));
+  };
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => { if (dragging.current) setFromY(e.clientY); };
+    const up = () => { dragging.current = false; };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    // eslint-disable-next-line
+  }, []);
+
+  const pct = ((value - min) / (max - min)) * 100;
+
+  return (
+    <div className="relative h-full flex flex-col items-center" style={{ width: "100%" }}>
+      <div
+        ref={ref}
+        onPointerDown={(e) => { dragging.current = true; setFromY(e.clientY); }}
+        className="relative w-full flex-1 rounded-2xl cursor-pointer touch-none"
+        style={{ background: gradient, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}
+      >
+        <motion.div
+          className="absolute left-1/2 -translate-x-1/2 rounded-full bg-white"
+          style={{
+            width: "min(70%, 22px)", height: "min(70%, 22px)",
+            top: `calc(${pct}% - min(35%, 11px))`,
+            boxShadow: "0 4px 14px rgba(0,0,0,0.25), 0 0 0 2px " + thumbBorder,
+          }}
+          animate={{ scale: dragging.current ? 1.1 : 1 }}
+          transition={{ type: "spring", stiffness: 350, damping: 22 }}
+        />
+      </div>
+      <span className="hidden sm:block mt-3 text-[10px] tracking-[0.3em] text-black/55 uppercase">{label}</span>
+    </div>
+  );
+}
+
+function RecallCard({
+  guess, setGuess, onSubmit, round, total,
+}: { guess: HSL; setGuess: (v: HSL) => void; onSubmit: () => void; round: number; total: number }) {
+  const bg = hslCss(guess);
+  // hue spectrum (top→bottom: 0→360)
+  const hueGrad = "linear-gradient(to bottom, hsl(0 90% 55%), hsl(60 90% 55%), hsl(120 80% 45%), hsl(180 80% 45%), hsl(240 85% 55%), hsl(300 85% 55%), hsl(360 90% 55%))";
+  // saturation: top = full sat (at current hue/lightness), bottom = gray
+  const satGrad = `linear-gradient(to bottom, hsl(${guess.h} 100% ${guess.l}%), hsl(${guess.h} 0% ${guess.l}%))`;
+  // lightness: top = white, middle = pure hue, bottom = black
+  const lightGrad = `linear-gradient(to bottom, #fff, hsl(${guess.h} ${guess.s}% 50%), #000)`;
+
+  return (
+    <Card bg={bg}>
+      <Counter round={round} total={total} />
+      <Brand />
+
+      {/* Sliders panel */}
+      <div className="absolute inset-y-6 sm:inset-y-10 left-4 sm:left-8 flex gap-2 sm:gap-4" style={{ width: "min(38%, 220px)" }}>
+        <div className="flex-1 flex flex-col">
+          <VSlider value={guess.h} min={0} max={360} onChange={(h) => setGuess({ ...guess, h })} gradient={hueGrad} label="Hue" />
+        </div>
+        <div className="flex-1 flex flex-col">
+          <VSlider value={100 - guess.s} min={0} max={100} onChange={(v) => setGuess({ ...guess, s: 100 - v })} gradient={satGrad} label="Saturation" />
+        </div>
+        <div className="flex-1 flex flex-col">
+          <VSlider value={100 - guess.l} min={0} max={100} onChange={(v) => setGuess({ ...guess, l: 100 - v })} gradient={lightGrad} label="Lightness" />
+        </div>
+      </div>
+
+      {/* Floating submit */}
+      <motion.button
+        whileHover={{ scale: 1.07 }} whileTap={{ scale: 0.92 }}
+        onClick={onSubmit}
+        aria-label="Lock in"
+        className="absolute bottom-5 right-5 sm:bottom-8 sm:right-8 w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white text-black inline-flex items-center justify-center shadow-[0_10px_30px_-8px_rgba(0,0,0,0.35)]"
+      >
+        <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <circle cx="12" cy="12" r="4" />
+          <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+        </svg>
+      </motion.button>
+    </Card>
+  );
+}
+
+// ---------- Reveal ----------
+function fmtHsl(c: HSL) { return `H${Math.round(c.h)} S${Math.round(c.s)} B${Math.round(c.l)}`; }
+
+function RevealCard({
+  target, guess, score, onNext, isLast, round, total,
+}: { target: HSL; guess: HSL; score: number; onNext: () => void; isLast: boolean; round: number; total: number }) {
+  const fb = feedback(score);
+  return (
+    <Card bg="transparent">
+      {/* Top — user selection */}
+      <div className="absolute inset-x-0 top-0 h-1/2 px-5 sm:px-10 py-6 sm:py-8" style={{ background: hslCss(guess) }}>
+        <Counter round={round} total={total} />
+        <div className="absolute left-5 sm:left-10 bottom-4 sm:bottom-6 text-[10px] sm:text-xs">
+          <p className="text-black/55 uppercase tracking-[0.2em]">Your selection</p>
+          <p className="text-black/75 tabular mt-1">{fmtHsl(guess)}</p>
+        </div>
+        <div className="absolute right-5 sm:right-10 top-6 sm:top-8 text-right max-w-[70%]">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease }}
+            className="font-display tabular text-black/85 leading-none"
+            style={{ fontSize: "clamp(56px, 12vw, 150px)", letterSpacing: "-0.04em", fontWeight: 700 }}
+          >
+            {score.toFixed(2)}
+          </motion.div>
+          <motion.p
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2, duration: 0.6 }}
+            className="mt-2 sm:mt-3 font-display text-black/80 leading-tight"
+            style={{ fontSize: "clamp(18px, 2.4vw, 32px)", fontWeight: 600 }}
+          >
+            {fb.title}<br />{fb.sub}
+          </motion.p>
+        </div>
+      </div>
+
+      {/* Bottom — original (fixed, unchanged) */}
+      <div className="absolute inset-x-0 bottom-0 h-1/2 px-5 sm:px-10 py-6 sm:py-8" style={{ background: hslCss(target) }}>
+        <div className="absolute left-5 sm:left-10 bottom-12 sm:bottom-14 text-[10px] sm:text-xs">
+          <p className="text-black/55 uppercase tracking-[0.2em]">Original</p>
+          <p className="text-black/75 tabular mt-1">{fmtHsl(target)}</p>
+        </div>
+        <Brand />
+        <motion.button
+          whileHover={{ scale: 1.07 }} whileTap={{ scale: 0.92 }}
+          onClick={onNext} aria-label="Next"
+          className="absolute bottom-5 right-5 sm:bottom-8 sm:right-8 w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white text-black inline-flex items-center justify-center shadow-[0_10px_30px_-8px_rgba(0,0,0,0.35)]"
+        >
+          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14" /><path d="M13 6l6 6-6 6" />
+          </svg>
         </motion.button>
       </div>
-    </motion.div>
+
+      {/* Hairline divider */}
+      <div className="absolute inset-x-0 top-1/2 h-px bg-black/10" />
+    </Card>
   );
 }
 
-function Swatch({ label, color, delay }: { label: string; color: RGB; delay: number }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.6, ease }}
-      className="rounded-3xl overflow-hidden"
-      style={{ boxShadow: "var(--shadow-soft)" }}
-    >
-      <div className="aspect-[4/3]" style={{ background: rgbToHex(color) }} />
-      <div className="p-4 bg-card flex items-center justify-between">
-        <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{label}</span>
-        <span className="tabular text-sm font-medium">{rgbToHex(color)}</span>
-      </div>
-    </motion.div>
-  );
-}
-
-function ScoreMeter({ score }: { score: number }) {
-  const color = score >= 90 ? "var(--olive)" : score >= 70 ? "var(--royal)" : score >= 50 ? "var(--coral)" : "var(--magenta)";
-  return (
-    <div className="flex items-center gap-4">
-      <div className="relative w-20 h-20">
-        <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
-          <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" strokeOpacity="0.1" strokeWidth="2.5" />
-          <motion.circle
-            cx="18" cy="18" r="15.9" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"
-            initial={{ strokeDasharray: "0 100" }}
-            animate={{ strokeDasharray: `${score} 100` }}
-            transition={{ duration: 1.2, ease }}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center font-display text-2xl tabular">{score}</div>
-      </div>
-      <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Similarity</p>
-        <p className="font-display text-2xl">{score >= 90 ? "Exceptional" : score >= 70 ? "Sharp eye" : score >= 50 ? "Close" : "Keep training"}</p>
-      </div>
-    </div>
-  );
-}
-
-function Summary({ results, avg, onPlayAgain, onExit }: { results: RoundResult[]; avg: number; onPlayAgain: () => void; onExit: () => void }) {
+// ---------- Summary ----------
+function Summary({ results, avg, onPlayAgain, onExit }: { results: { target: HSL; guess: HSL; score: number }[]; avg: number; onPlayAgain: () => void; onExit: () => void }) {
   const best = Math.max(...results.map(r => r.score));
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96, y: 12 }}
+      initial={{ opacity: 0, scale: 0.97, y: 12 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98, filter: "blur(8px)" }}
       transition={{ duration: 0.6, ease }}
-      className="w-full max-w-3xl rounded-[40px] glass p-10 sm:p-14 text-center"
-      style={{ boxShadow: "var(--shadow-float)" }}
+      className="w-full rounded-[32px] bg-card p-8 sm:p-14 text-center"
+      style={{ boxShadow: "0 40px 100px -30px rgba(15,18,30,0.25), 0 12px 40px -12px rgba(15,18,30,0.12)" }}
     >
-      <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">Session complete</p>
+      <p className="text-[10px] sm:text-xs uppercase tracking-[0.35em] text-muted-foreground">Session complete</p>
       <motion.h1
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.7, ease }}
-        className="font-display text-7xl sm:text-9xl mt-4 tabular"
-      >{avg}</motion.h1>
-      <p className="mt-2 text-muted-foreground">average similarity across {results.length} rounds</p>
+        className="font-display mt-4 tabular leading-none"
+        style={{ fontSize: "clamp(72px, 14vw, 180px)", letterSpacing: "-0.04em", fontWeight: 700 }}
+      >{avg.toFixed(2)}</motion.h1>
+      <p className="mt-2 text-muted-foreground text-sm sm:text-base">average accuracy across {results.length} rounds</p>
 
-      <div className="mt-10 grid grid-cols-3 gap-3 sm:gap-4">
-        <Stat label="Best" value={best} />
-        <Stat label="Average" value={avg} />
-        <Stat label="Rounds" value={results.length} />
+      <div className="mt-10 grid grid-cols-3 gap-3 sm:gap-4 max-w-md mx-auto">
+        <Stat label="Best" value={best.toFixed(2)} />
+        <Stat label="Average" value={avg.toFixed(2)} />
+        <Stat label="Rounds" value={String(results.length)} />
       </div>
 
-      <div className="mt-8 flex items-center justify-center gap-4 flex-wrap">
+      <div className="mt-8 flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
         {results.map((r, i) => (
           <div key={i} className="flex flex-col items-center gap-1">
             <div className="flex gap-1">
-              <div className="w-6 h-6 rounded-md" style={{ background: rgbToHex(r.target), boxShadow: "var(--shadow-soft)" }} />
-              <div className="w-6 h-6 rounded-md" style={{ background: rgbToHex(r.guess), boxShadow: "var(--shadow-soft)" }} />
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md" style={{ background: hslCss(r.target), boxShadow: "var(--shadow-soft)" }} />
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md" style={{ background: hslCss(r.guess), boxShadow: "var(--shadow-soft)" }} />
             </div>
-            <span className="tabular text-xs text-muted-foreground">{r.score}</span>
+            <span className="tabular text-[10px] sm:text-xs text-muted-foreground">{r.score.toFixed(1)}</span>
           </div>
         ))}
       </div>
@@ -366,23 +387,23 @@ function Summary({ results, avg, onPlayAgain, onExit }: { results: RoundResult[]
       <div className="mt-10 flex items-center justify-center gap-3">
         <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
           onClick={onPlayAgain}
-          className="rounded-full bg-primary text-primary-foreground px-6 py-3 font-medium">Play again</motion.button>
+          className="rounded-full bg-foreground text-background px-6 py-3 text-sm font-medium">Play again</motion.button>
         <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
           onClick={onExit}
-          className="rounded-full border border-foreground/15 px-6 py-3 font-medium">Home</motion.button>
+          className="rounded-full border border-foreground/15 px-6 py-3 text-sm font-medium">Home</motion.button>
       </div>
     </motion.div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-foreground/[0.04] p-5">
-      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
-      <p className="font-display text-3xl mt-1 tabular">{value}</p>
+    <div className="rounded-2xl bg-foreground/[0.04] p-4 sm:p-5">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
+      <p className="font-display text-2xl sm:text-3xl mt-1 tabular">{value}</p>
     </div>
   );
 }
 
-// silence unused import in some builds
-export { hexToRgb };
+// re-export for compatibility
+export { hslToRgb };
