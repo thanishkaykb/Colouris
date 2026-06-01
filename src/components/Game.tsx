@@ -206,23 +206,33 @@ function VSlider({
   gradient: string; label: string; thumbBorder?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  // Keep latest onChange in a ref so window listeners always call the freshest handler.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
-  const setFromY = (clientY: number) => {
+  const setFromY = useCallback((clientY: number) => {
     const el = ref.current; if (!el) return;
     const rect = el.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
-    onChange(Math.round(min + (max - min) * ratio));
-  };
+    onChangeRef.current(Math.round(min + (max - min) * ratio));
+  }, [min, max]);
 
-  useEffect(() => {
-    const move = (e: PointerEvent) => { if (dragging.current) setFromY(e.clientY); };
-    const up = () => { dragging.current = false; };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-    // eslint-disable-next-line
-  }, []);
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    setDragging(true);
+    setFromY(e.clientY);
+  };
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    setFromY(e.clientY);
+  };
+  const endDrag = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId); } catch {}
+    setDragging(false);
+  };
 
   const pct = ((value - min) / (max - min)) * 100;
 
@@ -230,19 +240,22 @@ function VSlider({
     <div className="relative h-full flex flex-col items-center" style={{ width: "100%" }}>
       <div
         ref={ref}
-        onPointerDown={(e) => { dragging.current = true; setFromY(e.clientY); }}
-        className="relative w-full flex-1 rounded-2xl cursor-pointer touch-none"
-        style={{ background: gradient, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className="relative w-full flex-1 rounded-2xl cursor-pointer touch-none select-none"
+        style={{ background: gradient, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)" }}
       >
         <motion.div
-          className="absolute left-1/2 -translate-x-1/2 rounded-full bg-white"
+          className="absolute left-1/2 -translate-x-1/2 rounded-full bg-white pointer-events-none"
           style={{
-            width: "min(70%, 22px)", height: "min(70%, 22px)",
-            top: `calc(${pct}% - min(35%, 11px))`,
-            boxShadow: "0 4px 14px rgba(0,0,0,0.25), 0 0 0 2px " + thumbBorder,
+            width: 26, height: 26,
+            top: `calc(${pct}% - 13px)`,
+            boxShadow: "0 6px 18px rgba(0,0,0,0.28), 0 0 0 2px " + thumbBorder,
           }}
-          animate={{ scale: dragging.current ? 1.1 : 1 }}
-          transition={{ type: "spring", stiffness: 350, damping: 22 }}
+          animate={{ scale: dragging ? 1.15 : 1 }}
+          transition={{ type: "spring", stiffness: 380, damping: 24 }}
         />
       </div>
       <span className="hidden sm:block mt-3 text-[10px] tracking-[0.3em] text-black/55 uppercase">{label}</span>
