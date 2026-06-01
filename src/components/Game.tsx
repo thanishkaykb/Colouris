@@ -32,14 +32,23 @@ export default function Game({
   const cfg = DIFF[difficulty];
   const [phase, setPhase] = useState<Phase>("memorize");
   const [round, setRound] = useState(0);
-  // target is set ONCE per round and never mutated after
-  const [target, setTarget] = useState<HSL>(() => randomHsl());
+  // target is set ONCE per round and never mutated after.
+  // Deterministic initial value avoids SSR/CSR hydration mismatch; we randomize on mount.
+  const [target, setTarget] = useState<HSL>({ h: 200, s: 60, l: 55 });
   const [guess, setGuess] = useState<HSL>({ h: 180, s: 50, l: 50 });
   const [timeLeft, setTimeLeft] = useState(cfg.seconds);
   const [results, setResults] = useState<RoundResult[]>([]);
   const rafRef = useRef<number | null>(null);
+  const didInit = useRef(false);
 
   const play = useCallback((fn: () => void) => { if (soundOn) fn(); }, [soundOn]);
+
+  // Client-only first randomization (post-hydration).
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    setTarget(randomHsl());
+  }, []);
 
   useEffect(() => {
     if (phase !== "memorize") return;
@@ -197,23 +206,33 @@ function VSlider({
   gradient: string; label: string; thumbBorder?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  // Keep latest onChange in a ref so window listeners always call the freshest handler.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
-  const setFromY = (clientY: number) => {
+  const setFromY = useCallback((clientY: number) => {
     const el = ref.current; if (!el) return;
     const rect = el.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
-    onChange(Math.round(min + (max - min) * ratio));
-  };
+    onChangeRef.current(Math.round(min + (max - min) * ratio));
+  }, [min, max]);
 
-  useEffect(() => {
-    const move = (e: PointerEvent) => { if (dragging.current) setFromY(e.clientY); };
-    const up = () => { dragging.current = false; };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-    // eslint-disable-next-line
-  }, []);
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    setDragging(true);
+    setFromY(e.clientY);
+  };
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    setFromY(e.clientY);
+  };
+  const endDrag = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId); } catch {}
+    setDragging(false);
+  };
 
   const pct = ((value - min) / (max - min)) * 100;
 
@@ -221,19 +240,22 @@ function VSlider({
     <div className="relative h-full flex flex-col items-center" style={{ width: "100%" }}>
       <div
         ref={ref}
-        onPointerDown={(e) => { dragging.current = true; setFromY(e.clientY); }}
-        className="relative w-full flex-1 rounded-2xl cursor-pointer touch-none"
-        style={{ background: gradient, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className="relative w-full flex-1 rounded-2xl cursor-pointer touch-none select-none"
+        style={{ background: gradient, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)" }}
       >
         <motion.div
-          className="absolute left-1/2 -translate-x-1/2 rounded-full bg-white"
+          className="absolute left-1/2 -translate-x-1/2 rounded-full bg-white pointer-events-none"
           style={{
-            width: "min(70%, 22px)", height: "min(70%, 22px)",
-            top: `calc(${pct}% - min(35%, 11px))`,
-            boxShadow: "0 4px 14px rgba(0,0,0,0.25), 0 0 0 2px " + thumbBorder,
+            width: 26, height: 26,
+            top: `calc(${pct}% - 13px)`,
+            boxShadow: "0 6px 18px rgba(0,0,0,0.28), 0 0 0 2px " + thumbBorder,
           }}
-          animate={{ scale: dragging.current ? 1.1 : 1 }}
-          transition={{ type: "spring", stiffness: 350, damping: 22 }}
+          animate={{ scale: dragging ? 1.15 : 1 }}
+          transition={{ type: "spring", stiffness: 380, damping: 24 }}
         />
       </div>
       <span className="hidden sm:block mt-3 text-[10px] tracking-[0.3em] text-black/55 uppercase">{label}</span>
@@ -258,7 +280,7 @@ function RecallCard({
       <Brand />
 
       {/* Sliders panel */}
-      <div className="absolute inset-y-6 sm:inset-y-10 left-4 sm:left-8 flex gap-2 sm:gap-4" style={{ width: "min(38%, 220px)" }}>
+      <div className="absolute inset-y-6 sm:inset-y-10 left-4 sm:left-8 flex gap-3 sm:gap-5" style={{ width: "min(46%, 320px)" }}>
         <div className="flex-1 flex flex-col">
           <VSlider value={guess.h} min={0} max={360} onChange={(h) => setGuess({ ...guess, h })} gradient={hueGrad} label="Hue" />
         </div>
