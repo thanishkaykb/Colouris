@@ -32,14 +32,23 @@ export default function Game({
   const cfg = DIFF[difficulty];
   const [phase, setPhase] = useState<Phase>("memorize");
   const [round, setRound] = useState(0);
-  // target is set ONCE per round and never mutated after
-  const [target, setTarget] = useState<HSL>(() => randomHsl());
+  // target is set ONCE per round and never mutated after.
+  // Deterministic initial value avoids SSR/CSR hydration mismatch; we randomize on mount.
+  const [target, setTarget] = useState<HSL>({ h: 200, s: 60, l: 55 });
   const [guess, setGuess] = useState<HSL>({ h: 180, s: 50, l: 50 });
   const [timeLeft, setTimeLeft] = useState(cfg.seconds);
   const [results, setResults] = useState<RoundResult[]>([]);
   const rafRef = useRef<number | null>(null);
+  const didInit = useRef(false);
 
   const play = useCallback((fn: () => void) => { if (soundOn) fn(); }, [soundOn]);
+
+  // Client-only first randomization (post-hydration).
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    setTarget(randomHsl());
+  }, []);
 
   useEffect(() => {
     if (phase !== "memorize") return;
