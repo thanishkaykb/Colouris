@@ -7,10 +7,9 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 // When deploying to Vercel, Vercel sets the `VERCEL` env var at build time.
-// Force-enable nitro with the `vercel` preset so the build outputs a
-// Vercel-compatible serverless bundle (in `.vercel/output`) instead of the
-// default Cloudflare Workers bundle. On Lovable's own infra this branch is
-// skipped and the default Cloudflare build is used.
+// Force Nitro to emit Vercel Build Output API files in `.vercel/output`.
+// The Lovable config wrapper has Cloudflare-oriented output defaults, so the
+// Vercel output paths must be explicit instead of relying on the preset alone.
 const isVercel = !!process.env.VERCEL;
 
 export default defineConfig({
@@ -22,6 +21,16 @@ export default defineConfig({
     ? {
         nitro: {
           preset: "vercel",
+          output: {
+            dir: ".vercel/output",
+            serverDir: ".vercel/output/functions/__server.func",
+            publicDir: ".vercel/output/static",
+          },
+          vercel: {
+            functions: {
+              runtime: "nodejs22.x",
+            },
+          },
         },
       }
     : {}),
