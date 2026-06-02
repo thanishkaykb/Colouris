@@ -26,11 +26,6 @@ export default defineConfig({
             serverDir: ".vercel/output/functions/__server.func",
             publicDir: ".vercel/output/static",
           },
-          vercel: {
-            functions: {
-              runtime: "nodejs22.x",
-            },
-          },
         },
       }
     : {}),
