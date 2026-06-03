@@ -2,7 +2,7 @@
 
 A color-memory game that quietly humbles your confidence in remembering colors.
 
-**Colouris** challenges players to memorize a set of randomly generated colors and recreate them using color controls. It blends design, perception, and a tiny bit of chaos into a fun interactive experience that reveals how unreliable human color memory actually is. Built with a modern frontend stack and designed for a smooth, minimalist experience. ([Lovable App][1])
+**Colouris** challenges players to memorize a set of randomly generated colors and recreate them using color controls. It blends design, perception, and a tiny bit of chaos into a fun interactive experience that reveals how unreliable human color memory actually is. Built with a modern frontend stack and designed for a smooth, minimalist experience.
 
 ### 🌐 Live Demo
 
@@ -124,11 +124,9 @@ The project explores visual memory through an engaging game experience, showing 
 
 **Thanishka Yogesh K B**
 
-* GitHub: [thanishkaykb](https://github.com/thanishkaykb?utm_source=chatgpt.com)
-* Portfolio: [Portfolio Website](https://portfolio-thanishka-yogesh.vercel.app?utm_source=chatgpt.com)
+* GitHub: [thanishkaykb](https://github.com/thanishkaykb)
+* Portfolio: [Portfolio Website](https://portfolio-thanishka-yogesh.vercel.app)
 
 ---
 
 ### ⭐ If you enjoyed Colouris, consider starring the repository and challenging your friends to see who actually remembers colors better. The results are usually... surprisingly brutal. 🎨🧠🔥
-
-[1]: https://lovableapp.org/products/colormatching-vercel-app?utm_source=chatgpt.com "color matching game - Lovable App"
