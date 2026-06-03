@@ -6,11 +6,11 @@ A color-memory game that quietly humbles your confidence in remembering colors.
 
 ### 🌐 Live Demo
 
-[Colouris Live Website](https://colouris.lovable.app?utm_source=chatgpt.com)
+[Colouris Live Website](colouris.vercel.app/)
 
 ### 📦 Repository
 
-[GitHub Repository](https://github.com/thanishkaykb/Colouris?utm_source=chatgpt.com)
+[GitHub Repository](https://github.com/thanishkaykb/Colouris)
 
 ---
 
