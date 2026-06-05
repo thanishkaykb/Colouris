@@ -128,5 +128,3 @@ The project explores visual memory through an engaging game experience, showing 
 * Portfolio: [Portfolio Website](https://portfolio-thanishka-yogesh.vercel.app)
 
 ---
-
-### ⭐ If you enjoyed Colouris, consider starring the repository and challenging your friends to see who actually remembers colors better. The results are usually... surprisingly brutal. 🎨🧠🔥
